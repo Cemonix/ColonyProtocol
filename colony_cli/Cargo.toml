@@ -1,0 +1,13 @@
+[package]
+name = "colony_cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "colony_cli"
+path = "src/lib.rs"
+
+[dependencies]
