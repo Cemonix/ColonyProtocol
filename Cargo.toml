@@ -2,8 +2,6 @@
 resolver = "3"
 members = [
     "colony_protocol",
-    "colony_core",
-    "colony_cli",
 ]
 
 [workspace.package]

@@ -1,21 +1,32 @@
-struct ColonyProtocol;
+mod resources;
+mod configs;
+mod structure;
+mod planet;
+mod player;
+mod game_state;
+mod game_configuration;
+mod game;
+mod planet_graph;
+mod commands;
+mod utils;
 
-impl ColonyProtocol {
-    fn new() -> Self {
-        ColonyProtocol
-    }
-
-    fn run(&self) {
-        loop {
-            // Main protocol loop logic goes here
-            println!("Colony protocol is running...");
-            // For demonstration purposes, we'll break the loop immediately
-            break;
-        }
-    }
-}
+use crate::{game::Game, game_configuration::GameConfiguration};
 
 fn main() {
-    let protocol = ColonyProtocol::new();
-    protocol.run();
+    let game_configuration = match GameConfiguration::new() {
+        Ok(game) => game,
+        Err(e) => {
+            eprintln!("Failed to create game configuration: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let mut game = match Game::new(game_configuration) {
+        Ok(game) => game,
+        Err(e) => {
+            eprintln!("Failed to initialize game: {}", e);
+            std::process::exit(1);
+        }
+    };
+    game.run();
 }
