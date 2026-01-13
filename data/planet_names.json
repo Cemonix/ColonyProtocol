@@ -1,0 +1,36 @@
+{
+  "prefixes": [
+    "Crimson",
+    "Void",
+    "Azure",
+    "Iron",
+    "Shadow",
+    "Stellar",
+    "Nebula",
+    "Obsidian",
+    "Radiant",
+    "Frozen",
+    "Molten",
+    "Ancient",
+    "Mystic",
+    "Titan",
+    "Nova"
+  ],
+  "suffixes": [
+    "Prime",
+    "Theta",
+    "Sigma",
+    "Omega",
+    "Alpha",
+    "Kepler",
+    "Proxima",
+    "Centauri",
+    "Andromeda",
+    "Orion",
+    "Perseus",
+    "Cygnus",
+    "Vega",
+    "Altair",
+    "Rigel"
+  ]
+}
