@@ -14,12 +14,13 @@ use crate::{game::Game, game_configuration::GameConfiguration};
 
 fn main() {
     let game_configuration = match GameConfiguration::new() {
-        Ok(game) => game,
-        Err(e) => {
-            eprintln!("Failed to create game configuration: {}", e);
-            std::process::exit(1);
-        }
-    };
+            Ok(config) => config,
+            Err(error) => {
+                eprintln!("CRITICAL ERROR: Colonial Command initialization failed - {}", error);
+                eprintln!("Connection terminated. Please restart the protocol.");
+                return;
+            }
+        };
 
     let mut game = match Game::new(game_configuration) {
         Ok(game) => game,
