@@ -13,6 +13,16 @@ pub enum MapSize {
     Large
 }
 
+impl MapSize {
+    pub fn num_planets(&self) -> u32 {
+        match self {
+            MapSize::Small => 10,
+            MapSize::Medium => 20,
+            MapSize::Large => 30,
+        }
+    }
+}
+
 pub struct GameConfiguration {
     pub(crate) num_of_players: u8,
     pub(crate) player_names: Vec<String>,
