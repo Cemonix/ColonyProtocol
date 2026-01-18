@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::collections::hash_map::Entry;
 
 use thiserror::Error;
@@ -21,23 +21,34 @@ pub enum GameStateError {
 
 pub struct GameState {
     pub players: HashMap<PlayerId, Player>,
+    pub players_order: VecDeque<PlayerId>,
     pub planets: HashMap<PlanetId, Planet>,
     pub turn: u32,
     pub structure_config: StructureConfig
 }
 
 impl GameState {
-    pub fn new(players: HashMap<PlayerId, Player>, planets: HashMap<PlanetId, Planet>) -> Result<Self, GameStateError> {
+    pub fn new(
+        players: HashMap<PlayerId, Player>,
+        players_order: VecDeque<PlayerId>,
+        planets: HashMap<PlanetId, Planet>, 
+    ) -> Result<Self, GameStateError> {
         Ok(
             GameState {
-                players: players,
-                planets: planets,
+                players,
+                players_order,
+                planets,
                 turn: 0,
                 structure_config: StructureConfig::load()?
             }
         )
     }
 
+    pub fn current_player(&self) -> &PlayerId {
+        self.players_order.front()
+            .expect("Game has no players - invalid state")
+    }
+    
     pub fn add_player(&mut self, player: Player) -> Result<(), GameStateError> {
         match self.players.entry(player.id.clone()) {
             Entry::Vacant(e) => {
