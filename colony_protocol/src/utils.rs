@@ -24,3 +24,9 @@ where
         }
     }
 }
+
+/// Convert name to ID (lowercase with underscores)
+/// Example: "Crimson Theta" -> "crimson_theta"
+pub fn name_to_id(name: &str) -> String {
+    name.to_lowercase().replace(' ', "_")
+}
