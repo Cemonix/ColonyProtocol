@@ -54,18 +54,26 @@ impl GameConfiguration {
             |input| match input.to_lowercase().as_str() {
                 "y" => Ok(true),
                 "n" => Ok(false),
+                "" => Ok(false), // Default is false
                 _ => Err(String::from("Invalid response. Protocol requires affirmative (Y) or negative (N)."))
             }
         );
 
         let mut player_names: Vec<String> = Vec::with_capacity(player_num as usize);
         if name_players {
-            for _ in 0..player_num {
-                print!("Commander name");
+            for i in 0..player_num {
+                println!("Commander {} name:", i + 1);
                 player_names.push(
-                    get_player_input(
-                        |input| Ok(String::from(input))
-                    )
+                    get_player_input(|input| {
+                        let name = input.to_string();
+                        if player_names.iter().any(|existing| existing.eq_ignore_ascii_case(&name)) {
+                            Err(String::from("Commander name already registered. Choose unique designation."))
+                        } else if name.is_empty() {
+                            Err(String::from("Commander name cannot be empty."))
+                        } else {
+                            Ok(name)
+                        }
+                    })
                 );
             }
         }
@@ -84,6 +92,8 @@ impl GameConfiguration {
                 }
             }
         );
+
+        // TODO: Generate ai players as classic players with unique names and set their prop is_ai
     
         println!("\nQUERY: Star system density configuration (small|medium|large):");
     

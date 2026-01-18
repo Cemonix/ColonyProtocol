@@ -6,8 +6,8 @@ mod player;
 mod game_state;
 mod game_configuration;
 mod game;
-mod planet_graph;
 mod commands;
+mod planet_graph;
 mod utils;
 
 use crate::{game::Game, game_configuration::GameConfiguration};
