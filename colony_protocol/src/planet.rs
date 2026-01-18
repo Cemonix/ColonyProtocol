@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
+use crate::player::PlayerId;
 use crate::resources::Resources;
 use crate::configs::structure_config::StructureConfig;
 use crate::structure::{ StructureId, Structure, StructureState, StructureError };
-use crate::player::PlayerId;
 
 pub type PlanetId = String;
 
@@ -53,7 +53,7 @@ pub enum PlanetError {
 pub struct Planet {
     pub id: PlanetId,
     pub name: String,
-    pub connections: Vec<PlanetId>,
+    connections: Vec<PlanetId>,
     owner: Option<PlayerId>,
     structures: HashMap<StructureId, Structure>,
     production_rate: Resources,
@@ -62,12 +62,14 @@ pub struct Planet {
 }
 
 impl Planet {
-    pub fn new(id: PlanetId, name: String, connections: Vec<PlanetId>) -> Self {
+    pub fn new(
+        id: PlanetId, name: String, owner: Option<PlayerId>, connections: Vec<PlanetId>
+    ) -> Self {
         Planet {
             id,
             name,
+            owner,
             connections,
-            owner: None, // Nobody owns planet when it is created
             structures: HashMap::new(), // No structure is build on created planet
             production_rate: Resources::default(),
             available_resources: Resources::default(),
@@ -75,7 +77,23 @@ impl Planet {
         }
     }
 
-    pub fn create_structure(
+    pub fn get_owner(&self) -> &Option<PlayerId> {
+        &self.owner
+    }
+
+    pub fn set_owner(&mut self, new_owner: PlayerId) {
+        self.owner = Some(new_owner);
+    }
+
+    pub fn get_connections(&self) -> &Vec<PlanetId> {
+        &self.connections
+    }
+
+    pub fn add_connection(&mut self, connection: PlanetId) {
+        self.connections.push(connection);
+    }
+
+    pub fn build_structure(
         &mut self,
         structure_id: StructureId,
         structure_config: &StructureConfig
