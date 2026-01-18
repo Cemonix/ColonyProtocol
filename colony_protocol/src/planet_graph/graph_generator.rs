@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use rand::Rng;
 use thiserror::Error;
 
-use crate::planet::{Planet, PlanetId};
+use crate::{planet::{Planet, PlanetId}, utils};
 use super::name_generator::{NameGenerator, NameGeneratorError};
 
 #[derive(Debug, Error)]
@@ -51,14 +51,14 @@ impl GraphGenerator {
 
         // Generate first planet (root of tree)
         let root_name = self.name_generator.generate()?;
-        let root_id = Self::name_to_id(&root_name);
-        let root = Planet::new(root_id.clone(), root_name, Vec::new());
+        let root_id = utils::name_to_id(&root_name);
+        let root = Planet::new(root_id.clone(), root_name, None, Vec::new());
         planets.insert(root_id, root);
 
         // Generate remaining planets, connecting each to a random existing planet
         for _ in 1..self.num_planets {
             let planet_name = self.name_generator.generate()?;
-            let planet_id = Self::name_to_id(&planet_name);
+            let planet_id = utils::name_to_id(&planet_name);
 
             // Pick random existing planet to connect to
             let keys: Vec<_> = planets.keys().collect();
@@ -68,6 +68,7 @@ impl GraphGenerator {
             let new_planet = Planet::new(
                 planet_id.clone(),
                 planet_name,
+                None,
                 vec![parent_id.clone()],
             );
             planets.insert(planet_id.clone(), new_planet);
@@ -75,17 +76,10 @@ impl GraphGenerator {
             // Add bidirectional edge: parent also connects to new planet
             planets.get_mut(&parent_id)
                 .expect("parent_id was just selected from planets.keys()")
-                .connections
-                .push(planet_id);
+                .add_connection(planet_id);
         }
 
         Ok(planets)
-    }
-
-    /// Convert planet name to ID (lowercase with underscores)
-    /// Example: "Crimson Theta" -> "crimson_theta"
-    fn name_to_id(name: &str) -> PlanetId {
-        name.to_lowercase().replace(' ', "_")
     }
 }
 
@@ -111,7 +105,7 @@ mod tests {
 
         // Single planet has no connections (it's the root)
         let planet = planets.values().next().unwrap();
-        assert_eq!(planet.connections.len(), 0);
+        assert_eq!(planet.get_connections().len(), 0);
     }
 
     #[test]
@@ -129,11 +123,11 @@ mod tests {
 
         // Verify bidirectional edges
         for planet in planets.values() {
-            for neighbor_id in &planet.connections {
+            for neighbor_id in planet.get_connections() {
                 let neighbor = planets.get(neighbor_id)
                     .expect(&format!("Neighbor {} not found", neighbor_id));
                 assert!(
-                    neighbor.connections.contains(&planet.id),
+                    neighbor.get_connections().contains(&planet.id),
                     "Edge from {} to {} is not bidirectional",
                     planet.id,
                     neighbor_id
