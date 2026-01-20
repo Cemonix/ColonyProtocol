@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::configs::{PlanetNameParts, PlanetNamesConfigError};
 
 #[derive(Debug, Error)]
-pub enum NameGeneratorError {
+pub enum PlanetNameGeneratorError {
     #[error("Failed to generate unique planet name: all variants exhausted for base name")]
     AllVariantsExhausted,
 
@@ -17,18 +17,18 @@ pub enum NameGeneratorError {
     PlanetNamesConfigError(#[from] PlanetNamesConfigError),
 }
 
-pub struct NameGenerator {
+pub struct PlanetNameGenerator {
     name_parts: PlanetNameParts,
     used_names: HashSet<String>,
     rng: ThreadRng,
 }
 
-impl NameGenerator {
+impl PlanetNameGenerator {
     /// Load name parts from configuration
-    pub fn new() -> Result<Self, NameGeneratorError> {
+    pub fn new() -> Result<Self, PlanetNameGeneratorError> {
         let name_parts = PlanetNameParts::load()?;
 
-        Ok(NameGenerator {
+        Ok(PlanetNameGenerator {
             name_parts,
             used_names: HashSet::new(),
             rng: rand::rng(),
@@ -41,7 +41,7 @@ impl NameGenerator {
     /// Examples: "Crimson Theta", "Void Kepler II", "Azure Prime V"
     ///
     /// Returns error if all 10 variants of a base name are exhausted.
-    pub fn generate(&mut self) -> Result<String, NameGeneratorError> {
+    pub fn generate(&mut self) -> Result<String, PlanetNameGeneratorError> {
         // Pick random prefix and suffix for base name
         let prefix = &self.name_parts.prefixes[self.rng.random_range(0..self.name_parts.prefixes.len())];
         let suffix = &self.name_parts.suffixes[self.rng.random_range(0..self.name_parts.suffixes.len())];
@@ -65,7 +65,7 @@ impl NameGenerator {
         }
 
         // All 10 variants exhausted for this base name
-        Err(NameGeneratorError::AllVariantsExhausted)
+        Err(PlanetNameGeneratorError::AllVariantsExhausted)
     }
 
     /// Convert numbers 1-10 to Roman numerals
@@ -92,13 +92,13 @@ mod tests {
 
     #[test]
     fn test_load_name_generator() {
-        let generator = NameGenerator::new();
+        let generator = PlanetNameGenerator::new();
         assert!(generator.is_ok());
     }
 
     #[test]
     fn test_generate_unique_names() {
-        let mut generator = NameGenerator::new().unwrap();
+        let mut generator = PlanetNameGenerator::new().unwrap();
 
         // Generate 10 names and verify they're all unique
         let mut generated_names = HashSet::new();
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_generated_name_format() {
-        let mut generator = NameGenerator::new().unwrap();
+        let mut generator = PlanetNameGenerator::new().unwrap();
         let name = generator.generate().unwrap();
 
         // Name should have 2-3 parts (prefix, suffix, optional roman numeral)
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_collision_handling_with_roman_numerals() {
-        let mut generator = NameGenerator::new().unwrap();
+        let mut generator = PlanetNameGenerator::new().unwrap();
 
         // Force a collision by manually inserting a base name
         let test_base = format!("{} {}",

@@ -27,7 +27,7 @@ pub fn execute(args: BuildArgs, game_state: &GameState) -> Result<CommandEffect,
     // Check planet exists
     let planet_id = utils::name_to_id(&args.planet_name);
     
-    let planet = game_state.planets.get(&planet_id)
+    let planet = game_state.map.planets.get(&planet_id)
     .ok_or(CommandError::UnknownPlanet(args.planet_name.clone()))?;
 
     // Check player owns planet

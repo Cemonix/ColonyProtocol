@@ -101,7 +101,9 @@ impl StructureConfig {
             ("costs", definition.costs.len()),
             ("production", definition.production.len()),
             ("storage_capacity", definition.storage_capacity.len()),
-            ("hitpoints", definition.hitpoints.len())
+            ("hitpoints", definition.hitpoints.len()),
+            ("upgrade_time", definition.upgrade_time.len()),
+            ("energy_consumption", definition.energy_consumption.len()),
         ];
 
         for (field_name, size) in sizes_to_check {
@@ -333,6 +335,91 @@ mod tests {
         match result.unwrap_err() {
             StructureConfigError::JsonParseError(_serde_json) => {},
             err => panic!("Expected JsonParseError, got {:?}", err)
+        }
+    }
+
+    #[test]
+    fn test_upgrade_time_array_too_large() {
+        let json = r#"[
+            {
+                "id": "test_structure",
+                "name": "Test Structure",
+                "description": "Test",
+                "max_level": 2,
+                "costs": [
+                    {"minerals": 100, "gas": 50, "energy": 0},
+                    {"minerals": 200, "gas": 100, "energy": 0}
+                ],
+                "upgrade_time": [100, 200, 300],
+                "energy_consumption": [10, 20],
+                "hitpoints": [1000, 2000],
+                "production": [
+                    {"minerals": 10, "gas": 0, "energy": 0},
+                    {"minerals": 20, "gas": 0, "energy": 0}
+                ],
+                "storage_capacity": [
+                    {"minerals": 0, "gas": 0, "energy": 0},
+                    {"minerals": 0, "gas": 0, "energy": 0}
+                ],
+                "prerequisites": []
+            }
+        ]"#;
+
+        let result = StructureConfig::load_from_string(json);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        match err {
+            StructureConfigError::SizeMismatchError {
+                structure_name, field_name, expected, actual
+            } => {
+                assert_eq!(structure_name, "Test Structure");
+                assert_eq!(field_name, "upgrade_time");
+                assert_eq!(expected, 2);
+                assert_eq!(actual, 3);
+            },
+            _ => panic!("Expected SizeMismatchError for upgrade_time, got {:?}", err)
+        }
+    }
+
+    #[test]
+    fn test_energy_consumption_array_too_large() {
+        let json = r#"[
+            {
+                "id": "test_structure",
+                "name": "Test Structure",
+                "description": "Test",
+                "max_level": 1,
+                "costs": [
+                    {"minerals": 100, "gas": 50, "energy": 0}
+                ],
+                "upgrade_time": [100],
+                "energy_consumption": [10, 20],
+                "hitpoints": [1000],
+                "production": [
+                    {"minerals": 10, "gas": 0, "energy": 0}
+                ],
+                "storage_capacity": [
+                    {"minerals": 0, "gas": 0, "energy": 0}
+                ],
+                "prerequisites": []
+            }
+        ]"#;
+
+        let result = StructureConfig::load_from_string(json);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        match err {
+            StructureConfigError::SizeMismatchError {
+                structure_name, field_name, expected, actual
+            } => {
+                assert_eq!(structure_name, "Test Structure");
+                assert_eq!(field_name, "energy_consumption");
+                assert_eq!(expected, 1);
+                assert_eq!(actual, 2);
+            },
+            _ => panic!("Expected SizeMismatchError for energy_consumption, got {:?}", err)
         }
     }
 }
