@@ -1,3 +1,5 @@
+use crate::map::MapSize;
+
 use super::utils::get_player_input;
 use super::configs::player_names::{PlayerNameConfigError, generate_random_names};
 
@@ -5,22 +7,6 @@ use super::configs::player_names::{PlayerNameConfigError, generate_random_names}
 pub enum GameConfigurationError {
     #[error(transparent)]
     PlayerNameConfigError(#[from] PlayerNameConfigError)
-}
-
-pub enum MapSize {
-    Small,
-    Medium,
-    Large
-}
-
-impl MapSize {
-    pub fn num_planets(&self) -> u32 {
-        match self {
-            MapSize::Small => 10,
-            MapSize::Medium => 20,
-            MapSize::Large => 30,
-        }
-    }
 }
 
 pub struct GameConfiguration {
@@ -31,6 +17,23 @@ pub struct GameConfiguration {
 }
 
 impl GameConfiguration {
+    /// Creates a debug configuration with preset values.
+    /// Use this during development to skip interactive prompts.
+    #[cfg(debug_assertions)]
+    pub fn debug_default() -> Result<GameConfiguration, GameConfigurationError> {
+        let player_names = generate_random_names(2)?;
+
+        println!("Players: {:?}", player_names);
+        println!("Map size: Small\n");
+
+        Ok(GameConfiguration {
+            num_of_players: 2,
+            player_names,
+            num_of_ai: 0,
+            map_size: MapSize::Small,
+        })
+    }
+
     pub fn new() -> Result<GameConfiguration, GameConfigurationError> {
         println!("\n=== COLONY PROTOCOL INITIALIZATION ===");
         println!("Establishing secure connection to Colonial Command...");
