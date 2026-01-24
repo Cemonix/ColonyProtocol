@@ -91,6 +91,21 @@ fn format_planet_detail(planet_id: &str, game_state: &GameState) -> Result<Strin
     msg.push_str(&format!("  Available: {}\n", planet.available_resources));
     msg.push_str(&format!("  Capacity:  {}\n", planet.storage_capacity));
 
+    // Shields (if planet has defense shield structure)
+    let max_shield = planet.get_max_shield_hp();
+    if max_shield > 0 {
+        let current_shield = planet.get_shield_hp();
+        let shield_status = if current_shield == 0 {
+            String::from("DESTROYED")
+        } else if current_shield < max_shield {
+            String::from("DAMAGED")
+        } else {
+            String::from("FULL")
+        };
+        msg.push_str("\nSHIELDS\n");
+        msg.push_str(&format!("  {} / {} HP ({})\n", current_shield, max_shield, shield_status));
+    }
+
     // Structures
     let structures = planet.get_structures();
     if structures.is_empty() {
@@ -125,6 +140,12 @@ fn format_planet_detail(planet_id: &str, game_state: &GameState) -> Result<Strin
                     crate::pending_action::ActionType::BuildStructure(id) => format!("Building {}", id),
                     crate::pending_action::ActionType::UpgradeStructure(id) => format!("Upgrading {}", id),
                     crate::pending_action::ActionType::BuildShip(id) => format!("Building ship {}", id),
+                    crate::pending_action::ActionType::MoveFleet(fleet_id, destination) => {
+                        format!("Fleet {} moving to {}", fleet_id, destination)
+                    }
+                    crate::pending_action::ActionType::BombardPlanet(fleet_id, target) => {
+                        format!("Fleet {} bombarding {}", fleet_id, target)
+                    }
                 };
                 msg.push_str(&format!("  {} ({} turns remaining)\n", action_desc, action.cooldown_remaining));
             }
