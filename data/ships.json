@@ -1,0 +1,38 @@
+[
+    {
+        "id": "interceptor",
+        "name": "Interceptor",
+        "description": "Fast strike fighter designed for fleet combat. Effective against other ships.",
+        "attack": 10,
+        "shield": 5,
+        "bombardment": 0,
+        "cost": {"minerals": 100, "gas": 50, "energy": 0},
+        "build_time": 2,
+        "counters": ["interceptor", "ravager"],
+        "required_shipyard_level": 1
+    },
+    {
+        "id": "ravager",
+        "name": "Ravager",
+        "description": "Heavy bomber built for planetary bombardment. Destroys planetary shields and defenses.",
+        "attack": 5,
+        "shield": 15,
+        "bombardment": 25,
+        "cost": {"minerals": 200, "gas": 100, "energy": 0},
+        "build_time": 3,
+        "counters": [],
+        "required_shipyard_level": 2
+    },
+    {
+        "id": "ark",
+        "name": "Ark",
+        "description": "Massive colony ship carrying settlers and equipment to establish new colonies.",
+        "attack": 0,
+        "shield": 20,
+        "bombardment": 0,
+        "cost": {"minerals": 500, "gas": 250, "energy": 0},
+        "build_time": 5,
+        "counters": [],
+        "required_shipyard_level": 3
+    }
+]
