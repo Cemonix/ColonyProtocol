@@ -12,11 +12,6 @@
 - Each turn: colonies produce resources, fleets move, battles resolve
 - Clean text interface focused on decision-making and tactical planning
 
-### Technical Stack
-- **Language**: Rust (learning-focused implementation)
-- **Interface**: Terminal-based with command parser
-- **Architecture**: Turn-based state machine with pending actions queue
-
 ## Development Philosophy
 
 ### Learning-First Approach
@@ -53,30 +48,7 @@
 ## Project Structure
 
 ```
-colony_core/          # Game engine and logic
-colony_cli/          # Terminal interface
 colony_protocol/     # Main binary
-```
-
-## Command System Architecture
-
-### Design Pattern
-Using **macro-based command registration** to reduce boilerplate:
-- Commands defined via macro (easy to add new ones)
-- Each command implements `CommandExecutor` trait
-- Three-phase execution: Parse → Validate → Execute
-
-### Command Flow
-1. **Parse**: String → Command struct (syntax check only)
-2. **Validate**: Check game state constraints (resources, ownership, etc.)
-3. **Execute**: Mutate game state, add pending actions, return response
-
-### Command Format
-```
-<entity> <action> <target> [options]
-planet   build    c418     metal-mine
-fleet    move     fleet-1  sector-5
-status   planet   c418
 ```
 
 ## Interaction Guidelines for Claude
@@ -95,6 +67,10 @@ status   planet   c418
 - Write tests for trivial code
 - Over-engineer solutions
 - Skip discussing design choices
+- Write comments that describe obvious code
+- Never add package manually to Cargo.toml - use cargo add <package_name> instead to obtain latest version
+- Do not create any temporary files and markdown document files if not asked directly
+- No mod.rs files. It is old approach and nowadays folder with file in parent called same name as folder is used. 
 
 ### Code Review Focus
 When reviewing user's code:

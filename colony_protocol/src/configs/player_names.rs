@@ -35,7 +35,11 @@ struct PlayerNamesData {
 /// - There aren't enough names in the config for the requested count
 pub fn generate_random_names(count: usize) -> Result<Vec<String>, PlayerNameConfigError> {
     let data = fs::read_to_string("data/player_names.json")?;
-    let player_data: PlayerNamesData = serde_json::from_str(&data)?;
+    generate_random_names_from_string(&data, count)
+}
+
+pub fn generate_random_names_from_string(json: &str, count: usize) -> Result<Vec<String>, PlayerNameConfigError> {
+    let player_data: PlayerNamesData = serde_json::from_str(json)?;
 
     if player_data.names.len() < count {
         return Err(PlayerNameConfigError::InsufficientNames {
@@ -57,9 +61,11 @@ pub fn generate_random_names(count: usize) -> Result<Vec<String>, PlayerNameConf
 mod tests {
     use super::*;
 
+    const TEST_JSON: &str = r#"{"names": ["Alice", "Bob", "Charlie", "Diana", "Eve"]}"#;
+
     #[test]
     fn test_generate_unique_names() {
-        let names = generate_random_names(3).unwrap();
+        let names = generate_random_names_from_string(TEST_JSON, 3).unwrap();
 
         assert_eq!(names.len(), 3);
 
@@ -73,7 +79,21 @@ mod tests {
 
     #[test]
     fn test_names_are_not_empty() {
-        let names = generate_random_names(1).unwrap();
+        let names = generate_random_names_from_string(TEST_JSON, 1).unwrap();
         assert!(!names[0].is_empty());
+    }
+
+    #[test]
+    fn test_insufficient_names() {
+        let result = generate_random_names_from_string(TEST_JSON, 10);
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            PlayerNameConfigError::InsufficientNames { needed, available } => {
+                assert_eq!(needed, 10);
+                assert_eq!(available, 5);
+            }
+            err => panic!("Expected InsufficientNames, got {:?}", err),
+        }
     }
 }

@@ -17,9 +17,18 @@ pub struct Resources {
 
 impl Resources {
     pub fn has_enough(&self, cost: &Resources) -> bool {
-        self.minerals >= cost.minerals 
-        && self.gas >= cost.gas 
+        self.minerals >= cost.minerals
+        && self.gas >= cost.gas
         && self.energy >= cost.energy
+    }
+
+    /// Returns a new Resources with each field capped at the corresponding capacity value.
+    pub fn capped_at(&self, capacity: &Resources) -> Resources {
+        Resources {
+            minerals: self.minerals.min(capacity.minerals),
+            gas: self.gas.min(capacity.gas),
+            energy: self.energy.min(capacity.energy),
+        }
     }
 }
 

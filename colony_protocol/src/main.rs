@@ -11,6 +11,8 @@ mod game_configuration;
 mod game;
 mod commands;
 mod utils;
+mod ship;
+mod fleet;
 
 use crate::{game::Game, game_configuration::GameConfiguration};
 

@@ -22,11 +22,11 @@
       {"minerals": 90, "gas": 45, "energy": 90}
     ],
     "storage_capacity": [
-      {"minerals": 500, "gas": 250, "energy": 0},
-      {"minerals": 750, "gas": 375, "energy": 0},
-      {"minerals": 1000, "gas": 500, "energy": 0},
-      {"minerals": 1500, "gas": 750, "energy": 0},
-      {"minerals": 2000, "gas": 1000, "energy": 0}
+      {"minerals": 500, "gas": 250, "energy": 100},
+      {"minerals": 750, "gas": 375, "energy": 150},
+      {"minerals": 1000, "gas": 500, "energy": 200},
+      {"minerals": 1500, "gas": 750, "energy": 300},
+      {"minerals": 2000, "gas": 1000, "energy": 400}
     ],
     "prerequisites": []
   },
@@ -208,5 +208,42 @@
         "required_levels": [1, 2, 3, 4, 5]
       }
     ]
+  },
+  {
+    "id": "defense_shield",
+    "name": "Defense Shield",
+    "description": "Planetary shield generator protecting against orbital bombardment. Regenerates after 3 turns without attack.",
+    "max_level": 5,
+    "costs": [
+      {"minerals": 200, "gas": 100, "energy": 0},
+      {"minerals": 400, "gas": 200, "energy": 0},
+      {"minerals": 800, "gas": 400, "energy": 0},
+      {"minerals": 1600, "gas": 800, "energy": 0},
+      {"minerals": 3200, "gas": 1600, "energy": 0}
+    ],
+    "upgrade_time": [0, 3, 4, 5, 6],
+    "energy_consumption": [10, 20, 35, 55, 80],
+    "hitpoints": [100, 200, 400, 800, 1600],
+    "production": [
+      {"minerals": 0, "gas": 0, "energy": 0},
+      {"minerals": 0, "gas": 0, "energy": 0},
+      {"minerals": 0, "gas": 0, "energy": 0},
+      {"minerals": 0, "gas": 0, "energy": 0},
+      {"minerals": 0, "gas": 0, "energy": 0}
+    ],
+    "storage_capacity": [
+      {"minerals": 0, "gas": 0, "energy": 0},
+      {"minerals": 0, "gas": 0, "energy": 0},
+      {"minerals": 0, "gas": 0, "energy": 0},
+      {"minerals": 0, "gas": 0, "energy": 0},
+      {"minerals": 0, "gas": 0, "energy": 0}
+    ],
+    "prerequisites": [
+      {
+        "structure_id": "power_grid",
+        "required_levels": [1, 1, 2, 3, 4]
+      }
+    ],
+    "shield_regen_turns": 3
   }
 ]

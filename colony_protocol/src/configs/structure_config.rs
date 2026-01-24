@@ -60,7 +60,9 @@ pub struct StructureDefinition {
     pub hitpoints: Vec<u32>,
     pub production: Vec<Resources>,
     pub storage_capacity: Vec<Resources>,
-    pub prerequisites: Vec<Prerequisity>
+    pub prerequisites: Vec<Prerequisity>,
+    /// Turns without attack required for shield regeneration (only for defense_shield)
+    pub shield_regen_turns: Option<u32>,
 }
 
 #[derive(Debug)]

@@ -85,10 +85,60 @@ fn format_planet_detail(planet_id: &str, game_state: &GameState) -> Result<Strin
 
     let mut msg = format!("=== {} ({}) ===\n", planet.name, planet.id);
     msg.push_str(&format!("Owner: {}\n", owner));
-    msg.push_str(&format!("Connections: {:?}\n",
-        planet.get_connections().iter().map(|c| &c.to).collect::<Vec<_>>()
-    ));
-    // TODO: Add resources, structures when visibility allows
+
+    // Resources
+    msg.push_str("\nRESOURCES\n");
+    msg.push_str(&format!("  Available: {}\n", planet.available_resources));
+    msg.push_str(&format!("  Capacity:  {}\n", planet.storage_capacity));
+
+    // Structures
+    let structures = planet.get_structures();
+    if structures.is_empty() {
+        msg.push_str("\nSTRUCTURES\n  (none)\n");
+    } else {
+        msg.push_str("\nSTRUCTURES\n");
+        let mut structure_list: Vec<_> = structures.iter().collect();
+        structure_list.sort_by_key(|(id, _)| id.as_str());
+
+        for (id, structure) in structure_list {
+            let state_info = match &structure.state {
+                crate::structure::StructureState::Operational => String::new(),
+                crate::structure::StructureState::Upgrading { turns_remaining, target_level } => {
+                    format!(" (upgrading to Lv{}, {} turns)", target_level, turns_remaining)
+                }
+                crate::structure::StructureState::Damaged => String::from(" (DAMAGED)"),
+            };
+            msg.push_str(&format!(
+                "  {} ({}): Lv{}/{}{}\n",
+                structure.name, id, structure.level, structure.max_level, state_info
+            ));
+        }
+    }
+
+    // Pending action (if owned by current player)
+    let current_player_id = game_state.current_player();
+    if planet.get_owner().as_ref() == Some(current_player_id) {
+        if let Some(player) = game_state.players.get(current_player_id) {
+            if let Some(action) = player.pending_actions.iter().find(|a| &a.planet_id == planet_id) {
+                msg.push_str("\nPENDING ACTION\n");
+                let action_desc = match &action.action_type {
+                    crate::pending_action::ActionType::BuildStructure(id) => format!("Building {}", id),
+                    crate::pending_action::ActionType::UpgradeStructure(id) => format!("Upgrading {}", id),
+                    crate::pending_action::ActionType::BuildShip(id) => format!("Building ship {}", id),
+                };
+                msg.push_str(&format!("  {} ({} turns remaining)\n", action_desc, action.cooldown_remaining));
+            }
+        }
+    }
+
+    // Connections
+    msg.push_str("\nCONNECTIONS\n");
+    for conn in planet.get_connections() {
+        let dest_name = game_state.map.planets.get(&conn.to)
+            .map(|p| p.name.as_str())
+            .unwrap_or("Unknown");
+        msg.push_str(&format!("  {} ({}) - {} turn(s)\n", dest_name, conn.to, conn.distance));
+    }
 
     Ok(msg)
 }
