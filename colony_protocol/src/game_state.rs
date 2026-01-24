@@ -6,6 +6,7 @@ use thiserror::Error;
 use crate::map::Map;
 
 use super::configs::structure_config::{StructureConfig, StructureConfigError};
+use super::configs::ship_config::{ShipConfig, ShipConfigError};
 use super::planet::Planet;
 use super::player::{PlayerId, Player};
 
@@ -18,7 +19,10 @@ pub enum GameStateError {
     PlanetAlreadyExists(String),
 
     #[error(transparent)]
-    StructureConfigError(#[from] StructureConfigError)
+    StructureConfigError(#[from] StructureConfigError),
+
+    #[error(transparent)]
+    ShipConfigError(#[from] ShipConfigError),
 }
 
 pub struct GameState {
@@ -26,7 +30,10 @@ pub struct GameState {
     pub players_order: VecDeque<PlayerId>,
     pub map: Map,
     pub turn: u32,
-    pub structure_config: StructureConfig
+    /// Number of players who still need to play before the turn ends
+    pub players_remaining_this_turn: usize,
+    pub structure_config: StructureConfig,
+    pub ship_config: ShipConfig,
 }
 
 impl GameState {
@@ -35,14 +42,18 @@ impl GameState {
         players_order: VecDeque<PlayerId>,
         map: Map,
         structure_config: StructureConfig,
+        ship_config: ShipConfig,
     ) -> Result<Self, GameStateError> {
+        let player_count = players_order.len();
         Ok(
             GameState {
                 players,
                 players_order,
                 map,
                 turn: 1,
-                structure_config
+                players_remaining_this_turn: player_count,
+                structure_config,
+                ship_config,
             }
         )
     }
