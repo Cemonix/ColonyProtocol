@@ -5,15 +5,19 @@ use rand::seq::SliceRandom;
 
 use crate::commands::command::{CommandEffect, CommandError};
 use crate::commands::parser;
+use crate::configs::ship_config::{ShipConfig, ShipConfigError, ShipId};
+use crate::configs::structure_config::{StructureConfig, StructureConfigError};
 use crate::game_configuration::{GameConfigurationError, GameConfiguration};
-use crate::planet_name_generator::{PlanetNameGenerator, PlanetNameGeneratorError};
-use crate::player::{PlayerId, Player};
-use crate::planet::PlanetError;
 use crate::game_state::{GameState, GameStateError};
 use crate::map::{MapSize, Map, MapError};
-use crate::configs::structure_config::{StructureConfig, StructureConfigError};
-use crate::configs::ship_config::{ShipConfig, ShipConfigError};
+use crate::planet::{PlanetError, PlanetId};
+use crate::planet_name_generator::{PlanetNameGenerator, PlanetNameGeneratorError};
+use crate::player::{PlayerId, Player};
+use crate::ship::{FleetId, ShipInstanceId};
 use crate::utils;
+
+/// Counter bonus multiplier for ships attacking their counter-type
+const COUNTER_BONUS_MULTIPLIER: f32 = 1.5;
 
 #[derive(Debug, thiserror::Error)]
 pub enum GameError {
@@ -44,6 +48,12 @@ pub enum GameError {
 
 pub struct Game {
     pub(crate) game_state: GameState,
+}
+
+struct CombatResult {
+    attacker_wins: bool,
+    attacker_strength: u32,
+    defender_strength: u32,
 }
 
 impl Game {
@@ -364,6 +374,125 @@ impl Game {
                     fleet_name, ship_ids.len()
                 );
             }
+            CommandEffect::MoveFleet { fleet_id, target_planet, distance } => {
+                let current_player_id = self.game_state.current_player().clone();
+                let player = self.game_state.players.get(&current_player_id)
+                    .expect("Current player must exist");
+
+                // Get fleet info
+                let fleet = player.fleets.get(&fleet_id)
+                    .expect("Fleet must exist (validated by command)");
+                let source_planet = fleet.location.clone();
+                let fleet_name = fleet.name.clone();
+
+                // Get planet names for display
+                let source_name = self.game_state.map.planets.get(&source_planet)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| source_planet.clone());
+                let target_name = self.game_state.map.planets.get(&target_planet)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| target_planet.clone());
+
+                // Create pending action (no resource cost for movement)
+                use crate::pending_action::{PendingAction, ActionType};
+                let pending_action = PendingAction::new(
+                    ActionType::MoveFleet(fleet_id.clone(), target_planet.clone()),
+                    source_planet,
+                    distance as u32,
+                    crate::resources::Resources::default(),
+                );
+
+                // Add to player's pending actions
+                let player = self.game_state.players.get_mut(&current_player_id)
+                    .expect("Current player must exist");
+                player.pending_actions.push(pending_action);
+
+                println!(
+                    "Fleet '{}' ({}) ordered to move from {} to {}. Arrival in {} turn(s).",
+                    fleet_name, fleet_id, source_name, target_name, distance
+                );
+            }
+            CommandEffect::BombardPlanet { fleet_id, target_planet, bombardment_power } => {
+                let current_player_id = self.game_state.current_player().clone();
+                let player = self.game_state.players.get(&current_player_id)
+                    .expect("Current player must exist");
+
+                // Get fleet info
+                let fleet = player.fleets.get(&fleet_id)
+                    .expect("Fleet must exist (validated by command)");
+                let fleet_name = fleet.name.clone();
+
+                // Get planet name for display
+                let target_name = self.game_state.map.planets.get(&target_planet)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| target_planet.clone());
+
+                // Create pending action (no resource cost for bombardment, per-turn action)
+                use crate::pending_action::{PendingAction, ActionType};
+                let pending_action = PendingAction::new(
+                    ActionType::BombardPlanet(fleet_id.clone(), target_planet.clone()),
+                    target_planet.clone(),
+                    u32::MAX, // Bombardment continues indefinitely until shields are down
+                    crate::resources::Resources::default(),
+                );
+
+                // Add to player's pending actions
+                let player = self.game_state.players.get_mut(&current_player_id)
+                    .expect("Current player must exist");
+                player.pending_actions.push(pending_action);
+
+                println!(
+                    "Fleet '{}' ({}) begins bombarding {} with {} bombardment power.",
+                    fleet_name, fleet_id, target_name, bombardment_power
+                );
+            }
+            CommandEffect::CancelBombard { fleet_id } => {
+                let current_player_id = self.game_state.current_player().clone();
+                let player = self.game_state.players.get_mut(&current_player_id)
+                    .expect("Current player must exist");
+
+                // Remove the bombardment action
+                use crate::pending_action::ActionType;
+                player.pending_actions.retain(|action| {
+                    !matches!(&action.action_type,
+                        ActionType::BombardPlanet(fid, _)
+                        if fid == &fleet_id)
+                });
+
+                println!("Fleet '{}' bombardment cancelled.", fleet_id);
+            }
+            CommandEffect::ColonizePlanet { fleet_id, planet_id } => {
+                let current_player_id = self.game_state.current_player().clone();
+
+                // Get planet name before mutating
+                let planet_name = self.game_state.map.planets.get(&planet_id)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| planet_id.clone());
+
+                // Colonize the planet
+                let planet = self.game_state.map.planets.get_mut(&planet_id)
+                    .expect("Planet must exist (validated by command)");
+
+                match planet.colonize(&self.game_state.structure_config) {
+                    Ok(()) => {
+                        // Set ownership
+                        planet.set_owner(current_player_id.clone());
+
+                        // Add planet to player's planet list
+                        let player = self.game_state.players.get_mut(&current_player_id)
+                            .expect("Current player must exist");
+                        player.planets.push(planet_id.clone());
+
+                        println!(
+                            "Fleet '{}' has colonized {}! Planet now belongs to {}.",
+                            fleet_id, planet_name, player.name
+                        );
+                    }
+                    Err(e) => {
+                        println!("Failed to colonize {}: {}", planet_name, e);
+                    }
+                }
+            }
             CommandEffect::EndTurn { player_name } => {
                 println!("{} ends their turn.", player_name);
 
@@ -373,13 +502,31 @@ impl Game {
 
                 // Check if all players have played this turn
                 if self.game_state.players_remaining_this_turn == 0 {
-                    // Process pending actions for ALL players at end of turn
+                    // Process bombardments first (happens every turn for ongoing bombardments)
+                    let bombardment_messages = self.process_bombardments();
+
+                    // Then process pending actions for ALL players at end of turn
                     let completion_messages = self.process_all_pending_actions();
-                    if !completion_messages.is_empty() {
+
+                    // Display all turn processing messages
+                    let all_messages: Vec<_> = bombardment_messages.into_iter()
+                        .chain(completion_messages.into_iter())
+                        .collect();
+
+                    if !all_messages.is_empty() {
                         println!("\n=== Turn {} Processing ===", self.game_state.turn);
-                        for message in completion_messages {
+                        for message in all_messages {
                             println!("{}", message);
                         }
+                    }
+
+                    // Check for win condition
+                    if let Some(winner_id) = self.check_win_condition() {
+                        let winner = self.game_state.players.get(&winner_id)
+                            .expect("Winner must exist");
+                        println!("\n🎉 VICTORY! {} has conquered the entire system!", winner.name);
+                        println!("Game Over - {} wins on Turn {}", winner.name, self.game_state.turn);
+                        return Ok(());
                     }
 
                     // Increment turn and reset counter
@@ -400,6 +547,434 @@ impl Game {
         }
 
         Ok(())
+    }
+
+    /// Checks if any player has won by owning all planets.
+    /// Returns the winner's PlayerId if there is one, None otherwise.
+    fn check_win_condition(&self) -> Option<PlayerId> {
+        let total_planets = self.game_state.map.planets.len();
+
+        for player in self.game_state.players.values() {
+            if player.planets.len() == total_planets {
+                return Some(player.id.clone());
+            }
+        }
+
+        None
+    }
+
+    /// Processes a fleet arriving at a destination planet.
+    /// Handles combat resolution and conquest.
+    /// Returns messages describing what happened.
+    fn process_fleet_arrival(
+        &mut self,
+        attacker_id: &PlayerId,
+        fleet_id: &FleetId,
+        destination: &PlanetId,
+    ) -> Vec<String> {
+        let mut messages = Vec::new();
+
+        // Get destination planet info
+        let planet_owner = self.game_state.map.planets
+            .get(destination)
+            .and_then(|p| p.get_owner().clone());
+        let planet_name = self.game_state.map.planets
+            .get(destination)
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| destination.clone());
+
+        // Check if this is a friendly arrival (same owner) or potential combat
+        let needs_combat = planet_owner.as_ref() != Some(attacker_id);
+
+        if !needs_combat {
+            // Friendly arrival - just move the fleet
+            self.move_fleet_to_planet(attacker_id, fleet_id, destination);
+            messages.push(format!(
+                "Fleet {} arrived at {} (friendly territory)",
+                fleet_id, planet_name
+            ));
+            return messages;
+        }
+
+        // Combat needed - get defending ships at the planet
+        let defender_id = planet_owner;
+        let defending_ship_ids = self.get_defending_ships(destination, &defender_id);
+
+        if defending_ship_ids.is_empty() {
+            // Undefended planet - move fleet there
+            self.move_fleet_to_planet(attacker_id, fleet_id, destination);
+
+            if defender_id.is_some() {
+                messages.push(format!(
+                    "Fleet {} arrived at undefended enemy planet {}. Use bombardment to weaken defenses, then colonize.",
+                    fleet_id, planet_name
+                ));
+            } else {
+                messages.push(format!(
+                    "Fleet {} arrived at neutral planet {}. Use colonize command to claim it.",
+                    fleet_id, planet_name
+                ));
+            }
+            return messages;
+        }
+
+        // Defended planet - resolve combat
+        let combat_result = self.resolve_combat(
+            attacker_id,
+            fleet_id,
+            &defender_id,
+            &defending_ship_ids,
+        );
+
+        messages.push(format!(
+            "⚔ BATTLE at {}! {} vs {}",
+            planet_name,
+            self.game_state.players.get(attacker_id).map(|p| &p.name).unwrap_or(&String::from("Unknown")),
+            defender_id.as_ref()
+                .and_then(|id| self.game_state.players.get(id))
+                .map(|p| &p.name)
+                .unwrap_or(&String::from("Unknown"))
+        ));
+        messages.push(format!(
+            "  Attack: {} | Defense: {}",
+            combat_result.attacker_strength,
+            combat_result.defender_strength
+        ));
+
+        if combat_result.attacker_wins {
+            messages.push(format!("  Victory! Attacker wins!"));
+
+            // Destroy defending ships
+            self.destroy_ships(&defender_id, &defending_ship_ids);
+            messages.push(format!(
+                "  {} defending ship(s) destroyed",
+                defending_ship_ids.len()
+            ));
+
+            // Move attacker fleet to planet
+            self.move_fleet_to_planet(attacker_id, fleet_id, destination);
+            messages.push(format!(
+                "  Fleet {} now orbits {}. Use bombardment to weaken defenses, then colonize.",
+                fleet_id, planet_name
+            ));
+        } else {
+            messages.push(format!("  Defeat! Defender wins!"));
+
+            // Destroy attacking fleet
+            let attacker_fleet = self.game_state.players
+                .get(attacker_id)
+                .and_then(|p| p.fleets.get(fleet_id))
+                .map(|f| f.ships.clone())
+                .unwrap_or_default();
+
+            self.destroy_ships(&Some(attacker_id.clone()), &attacker_fleet);
+            messages.push(format!(
+                "  {} attacking ship(s) destroyed",
+                attacker_fleet.len()
+            ));
+
+            // Disband the empty fleet
+            if let Some(player) = self.game_state.players.get_mut(attacker_id) {
+                player.fleets.remove(fleet_id);
+            }
+        }
+
+        messages
+    }
+
+    /// Gets all ships defending a planet (ships belonging to planet owner at that location).
+    fn get_defending_ships(
+        &self,
+        planet_id: &PlanetId,
+        owner_id: &Option<PlayerId>,
+    ) -> Vec<ShipInstanceId> {
+        let Some(owner) = owner_id else {
+            return Vec::new();
+        };
+
+        let Some(player) = self.game_state.players.get(owner) else {
+            return Vec::new();
+        };
+
+        player.ships
+            .values()
+            .filter(|ship| &ship.location == planet_id)
+            .map(|ship| ship.id.clone())
+            .collect()
+    }
+
+    /// Moves a fleet to a new planet location.
+    fn move_fleet_to_planet(
+        &mut self,
+        player_id: &PlayerId,
+        fleet_id: &FleetId,
+        destination: &PlanetId,
+    ) {
+        // Update fleet location
+        if let Some(player) = self.game_state.players.get_mut(player_id) {
+            if let Some(fleet) = player.fleets.get_mut(fleet_id) {
+                fleet.location = destination.clone();
+
+                // Update all ship locations
+                for ship_id in &fleet.ships.clone() {
+                    if let Some(ship) = player.ships.get_mut(ship_id) {
+                        ship.location = destination.clone();
+                    }
+                }
+            }
+        }
+    }
+
+    /// Destroys a list of ships belonging to a player.
+    fn destroy_ships(&mut self, player_id: &Option<PlayerId>, ship_ids: &[ShipInstanceId]) {
+        let Some(owner_id) = player_id else {
+            return;
+        };
+
+        let Some(player) = self.game_state.players.get_mut(owner_id) else {
+            return;
+        };
+
+        for ship_id in ship_ids {
+            // Remove ship from any fleet
+            if let Some(ship) = player.ships.get(ship_id) {
+                if let Some(fleet_id) = &ship.fleet_id {
+                    if let Some(fleet) = player.fleets.get_mut(fleet_id) {
+                        fleet.remove_ship(ship_id);
+                    }
+                }
+            }
+
+            // Remove ship from player
+            player.ships.remove(ship_id);
+        }
+
+        // Clean up empty fleets
+        let empty_fleet_ids: Vec<_> = player.fleets
+            .iter()
+            .filter(|(_, f)| f.is_empty())
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        for fleet_id in empty_fleet_ids {
+            player.fleets.remove(&fleet_id);
+        }
+    }
+
+    /// Resolves combat between an attacking fleet and defending ships.
+    fn resolve_combat(
+        &self,
+        attacker_id: &PlayerId,
+        attacker_fleet_id: &FleetId,
+        defender_id: &Option<PlayerId>,
+        defending_ship_ids: &[ShipInstanceId],
+    ) -> CombatResult {
+        let attacker_strength = self.calculate_fleet_attack(attacker_id, attacker_fleet_id, defending_ship_ids);
+        let defender_strength = self.calculate_defense(defender_id, defending_ship_ids, attacker_fleet_id, attacker_id);
+
+        CombatResult {
+            attacker_wins: attacker_strength > defender_strength,
+            attacker_strength,
+            defender_strength,
+        }
+    }
+
+    /// Calculates total attack strength of a fleet with counter bonuses.
+    fn calculate_fleet_attack(
+        &self,
+        player_id: &PlayerId,
+        fleet_id: &FleetId,
+        defender_ship_ids: &[ShipInstanceId],
+    ) -> u32 {
+        let Some(player) = self.game_state.players.get(player_id) else {
+            return 0;
+        };
+
+        let Some(fleet) = player.fleets.get(fleet_id) else {
+            return 0;
+        };
+
+        let mut total_attack = 0;
+
+        for ship_id in &fleet.ships {
+            if let Some(ship) = player.ships.get(ship_id) {
+                if let Some(ship_def) = self.game_state.ship_config.get(&ship.ship_type) {
+                    let mut attack = ship_def.attack;
+
+                    // Apply counter bonuses
+                    if self.has_counter_advantage(&ship.ship_type, defender_ship_ids) {
+                        attack = (attack as f32 * COUNTER_BONUS_MULTIPLIER) as u32;
+                    }
+
+                    total_attack += attack;
+                }
+            }
+        }
+
+        total_attack
+    }
+
+    /// Calculates total defense strength of defending ships with counter bonuses.
+    fn calculate_defense(
+        &self,
+        defender_id: &Option<PlayerId>,
+        defender_ship_ids: &[ShipInstanceId],
+        attacker_fleet_id: &FleetId,
+        attacker_id: &PlayerId,
+    ) -> u32 {
+        let Some(owner_id) = defender_id else {
+            return 0;
+        };
+
+        let Some(player) = self.game_state.players.get(owner_id) else {
+            return 0;
+        };
+
+        let mut total_defense = 0;
+
+        for ship_id in defender_ship_ids {
+            if let Some(ship) = player.ships.get(ship_id) {
+                if let Some(ship_def) = self.game_state.ship_config.get(&ship.ship_type) {
+                    let mut defense = ship_def.shield;
+
+                    // Apply counter bonuses
+                    if self.has_counter_advantage_against_fleet(&ship.ship_type, attacker_fleet_id, attacker_id) {
+                        defense = (defense as f32 * COUNTER_BONUS_MULTIPLIER) as u32;
+                    }
+
+                    total_defense += defense;
+                }
+            }
+        }
+
+        total_defense
+    }
+
+    /// Checks if a ship type has counter advantage against any of the defender ships.
+    fn has_counter_advantage(&self, ship_type: &ShipId, defender_ship_ids: &[ShipInstanceId]) -> bool {
+        let Some(ship_def) = self.game_state.ship_config.get(ship_type) else {
+            return false;
+        };
+
+        // Get all defender ship types
+        for ship_id in defender_ship_ids {
+            for player in self.game_state.players.values() {
+                if let Some(defender_ship) = player.ships.get(ship_id) {
+                    if ship_def.counters.contains(&defender_ship.ship_type) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Checks if a ship type has counter advantage against any ship in the attacking fleet.
+    fn has_counter_advantage_against_fleet(
+        &self,
+        ship_type: &ShipId,
+        attacker_fleet_id: &FleetId,
+        attacker_id: &PlayerId,
+    ) -> bool {
+        let Some(ship_def) = self.game_state.ship_config.get(ship_type) else {
+            return false;
+        };
+
+        let Some(player) = self.game_state.players.get(attacker_id) else {
+            return false;
+        };
+
+        let Some(fleet) = player.fleets.get(attacker_fleet_id) else {
+            return false;
+        };
+
+        // Check if this ship counters any ship in the attacking fleet
+        for ship_id in &fleet.ships {
+            if let Some(attacker_ship) = player.ships.get(ship_id) {
+                if ship_def.counters.contains(&attacker_ship.ship_type) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Process bombardment actions for ALL players at the end of a full turn.
+    /// Bombardments deal damage each turn until shields are destroyed.
+    /// Returns messages describing bombardment results.
+    fn process_bombardments(&mut self) -> Vec<String> {
+        use crate::pending_action::ActionType;
+        let mut bombardment_messages = Vec::new();
+
+        // Collect all player IDs to iterate over
+        let player_ids: Vec<_> = self.game_state.players.keys().cloned().collect();
+
+        for player_id in player_ids {
+            // Collect bombardment actions for this player
+            let bombardment_actions: Vec<_> = {
+                let player = self.game_state.players.get(&player_id)
+                    .expect("Player must exist");
+
+                player.pending_actions.iter()
+                    .filter_map(|action| {
+                        if let ActionType::BombardPlanet(fleet_id, planet_id) = &action.action_type {
+                            Some((fleet_id.clone(), planet_id.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            };
+
+            // Process each bombardment
+            for (fleet_id, planet_id) in bombardment_actions {
+                // Calculate bombardment power
+                let bombardment_power = self.game_state.calculate_fleet_bombardment(&player_id, &fleet_id);
+
+                // Get planet name for messages
+                let planet_name = self.game_state.map.planets.get(&planet_id)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| planet_id.clone());
+
+                // Apply damage to shields
+                let planet = self.game_state.map.planets.get_mut(&planet_id)
+                    .expect("Planet must exist");
+
+                let shields_before = planet.get_shield_hp();
+                let _overflow_damage = planet.take_shield_damage(bombardment_power);
+
+                if shields_before > 0 {
+                    let shields_after = planet.get_shield_hp();
+
+                    if shields_after == 0 {
+                        // Shields destroyed!
+                        bombardment_messages.push(format!(
+                            "Fleet {} bombards {}. Shields destroyed! ({} → 0 HP). Planet ready for colonization.",
+                            fleet_id, planet_name, shields_before
+                        ));
+
+                        // Remove the bombardment action since shields are down
+                        let player = self.game_state.players.get_mut(&player_id)
+                            .expect("Player must exist");
+                        player.pending_actions.retain(|action| {
+                            !matches!(&action.action_type,
+                                ActionType::BombardPlanet(fid, pid)
+                                if fid == &fleet_id && pid == &planet_id)
+                        });
+                    } else {
+                        // Shields still up
+                        bombardment_messages.push(format!(
+                            "Fleet {} bombards {}. Shields damaged: {} → {} HP.",
+                            fleet_id, planet_name, shields_before, shields_after
+                        ));
+                    }
+                }
+            }
+        }
+
+        bombardment_messages
     }
 
     /// Process pending actions for ALL players at the end of a full turn.
@@ -495,6 +1070,17 @@ impl Game {
                             "Ship built: {} ({}) at planet {}",
                             ship_instance_id, ship_type, planet_name
                         ));
+                    }
+
+                    ActionType::MoveFleet(fleet_id, destination) => {
+                        // Handle fleet arrival and potential combat
+                        let messages = self.process_fleet_arrival(&player_id, &fleet_id, &destination);
+                        completion_messages.extend(messages);
+                    }
+
+                    ActionType::BombardPlanet(_, _) => {
+                        // Bombardment actions complete when shields hit 0, handled in process_bombardments
+                        // This case should not be reached since bombardments are removed when shields hit 0
                     }
                 }
             }

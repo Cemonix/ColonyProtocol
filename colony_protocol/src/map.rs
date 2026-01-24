@@ -4,6 +4,7 @@ use rand::Rng;
 
 use crate::planet::{Connection, Planet, PlanetId};
 use crate::planet_name_generator::{PlanetNameGenerator, PlanetNameGeneratorError};
+use crate::player::PlayerId;
 use crate::utils;
 
 static GRID_HEIGHT: u8 = 40;
@@ -116,7 +117,7 @@ impl Map {
         })
     }
 
-    pub fn render_full(&self) -> String {
+    pub fn render_full(&self, player_names: &HashMap<PlayerId, String>) -> String {
         let width = GRID_WIDTH as usize;
         let height = GRID_HEIGHT as usize;
 
@@ -148,6 +149,30 @@ impl Map {
         // Draw planets on top of lines
         for (_, &(x, y)) in &self.planet_positions {
             grid[idx(x as usize, y as usize)] = PLANET_ICON;
+        }
+
+        // Draw labels on top of everything (so they don't get interrupted by edges)
+        for (planet_id, &(x, y)) in &self.planet_positions {
+            let planet = self.planets.get(planet_id).expect("planet_id exists in planet_positions");
+            let label = if let Some(owner_id) = planet.get_owner() {
+                let owner_name = player_names.get(owner_id).map(|s| s.as_str()).unwrap_or("Unknown");
+                format!(" {} ({})", planet_id, owner_name)
+            } else {
+                format!(" {}", planet_id)
+            };
+
+            // Write label chars into grid, overwriting everything except borders
+            let label_start_x = x as usize + 1;
+            for (i, ch) in label.chars().enumerate() {
+                let label_x = label_start_x + i;
+                if label_x < width - 1 {
+                    let current_char = grid[idx(label_x, y as usize)];
+                    // Don't overwrite borders (#) or planet icons (◉)
+                    if current_char != '#' && current_char != PLANET_ICON {
+                        grid[idx(label_x, y as usize)] = ch;
+                    }
+                }
+            }
         }
 
         // Convert grid to string
