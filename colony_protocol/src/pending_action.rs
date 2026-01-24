@@ -1,6 +1,7 @@
 use crate::configs::ship_config::ShipId;
 use crate::planet::PlanetId;
 use crate::resources::Resources;
+use crate::ship::FleetId;
 use crate::structure::StructureId;
 
 #[derive(Debug, Clone)]
@@ -8,6 +9,8 @@ pub enum ActionType {
     BuildStructure(StructureId),
     UpgradeStructure(StructureId),
     BuildShip(ShipId),
+    MoveFleet(FleetId, PlanetId),
+    BombardPlanet(FleetId, PlanetId),
 }
 
 /// Represents an action pending completion (waiting for cooldown to reach 0)

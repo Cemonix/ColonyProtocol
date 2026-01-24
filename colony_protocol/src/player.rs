@@ -64,6 +64,36 @@ impl Player {
             .map(|index| self.pending_actions.remove(index))
     }
 
+    /// Checks if the specified fleet has a pending move action.
+    /// Since only one move per fleet is allowed, this returns true if any MoveFleet action exists for that fleet.
+    pub fn has_pending_fleet_move(&self, fleet_id: &FleetId) -> bool {
+        use crate::pending_action::ActionType;
+        self.pending_actions
+            .iter()
+            .any(|action| {
+                if let ActionType::MoveFleet(fid, _) = &action.action_type {
+                    fid == fleet_id
+                } else {
+                    false
+                }
+            })
+    }
+
+    /// Checks if the specified fleet has a pending bombardment action.
+    /// Since only one bombardment per fleet is allowed, this returns true if any BombardPlanet action exists for that fleet.
+    pub fn has_pending_fleet_bombardment(&self, fleet_id: &FleetId) -> bool {
+        use crate::pending_action::ActionType;
+        self.pending_actions
+            .iter()
+            .any(|action| {
+                if let ActionType::BombardPlanet(fid, _) = &action.action_type {
+                    fid == fleet_id
+                } else {
+                    false
+                }
+            })
+    }
+
     /// Generates a unique ship instance ID for the given ship type.
     /// IDs follow the pattern: interceptor_1, interceptor_2, ravager_1, etc.
     fn generate_ship_id(&mut self, ship_type: &ShipId) -> ShipInstanceId {

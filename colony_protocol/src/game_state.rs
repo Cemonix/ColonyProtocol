@@ -9,6 +9,7 @@ use super::configs::structure_config::{StructureConfig, StructureConfigError};
 use super::configs::ship_config::{ShipConfig, ShipConfigError};
 use super::planet::Planet;
 use super::player::{PlayerId, Player};
+use super::ship::FleetId;
 
 #[derive(Debug, Error)]
 pub enum GameStateError {
@@ -85,5 +86,28 @@ impl GameState {
                 Err(GameStateError::PlanetAlreadyExists(planet.name))
             }
         }
+    }
+
+    /// Calculates the total bombardment power of a fleet by summing all ships' bombardment stats.
+    /// Returns 0 if the fleet doesn't exist or has no ships.
+    pub fn calculate_fleet_bombardment(&self, player_id: &PlayerId, fleet_id: &FleetId) -> u32 {
+        let player = match self.players.get(player_id) {
+            Some(p) => p,
+            None => return 0,
+        };
+
+        let fleet = match player.fleets.get(fleet_id) {
+            Some(f) => f,
+            None => return 0,
+        };
+
+        // Sum bombardment value from all ships in the fleet
+        fleet.ships.iter()
+            .filter_map(|ship_id| {
+                player.ships.get(ship_id)
+                    .and_then(|ship| self.ship_config.get(&ship.ship_type))
+                    .map(|ship_def| ship_def.bombardment)
+            })
+            .sum()
     }
 }

@@ -103,5 +103,9 @@ pub enum CommandEffect {
     AddToFleet { fleet_id: FleetId, ship_ids: Vec<ShipInstanceId> },
     RemoveFromFleet { fleet_id: FleetId, ship_ids: Vec<ShipInstanceId> },
     DisbandFleet { fleet_id: FleetId },
+    MoveFleet { fleet_id: FleetId, target_planet: PlanetId, distance: u8 },
+    BombardPlanet { fleet_id: FleetId, target_planet: PlanetId, bombardment_power: u32 },
+    CancelBombard { fleet_id: FleetId },
+    ColonizePlanet { fleet_id: FleetId, planet_id: PlanetId },
     EndTurn { player_name: String },
 }
