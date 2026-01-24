@@ -157,4 +157,8 @@ impl Structure {
         }
         self.structure_definition.energy_consumption[(self.level-1) as usize]
     }
+
+    pub fn get_shield_regen_turns(&self) -> Option<u32> {
+        self.structure_definition.shield_regen_turns
+    }
 }

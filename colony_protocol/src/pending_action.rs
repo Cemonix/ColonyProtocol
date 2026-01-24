@@ -1,19 +1,13 @@
+use crate::configs::ship_config::ShipId;
 use crate::planet::PlanetId;
 use crate::resources::Resources;
 use crate::structure::StructureId;
 
-/// Type of ship (placeholder - will be defined properly later)
-pub type ShipType = String;
-
-/// Represents the type of pending action
 #[derive(Debug, Clone)]
 pub enum ActionType {
     BuildStructure(StructureId),
     UpgradeStructure(StructureId),
-    BuildShips {
-        ship_type: ShipType,
-        count: u32,
-    },
+    BuildShip(ShipId),
 }
 
 /// Represents an action pending completion (waiting for cooldown to reach 0)
