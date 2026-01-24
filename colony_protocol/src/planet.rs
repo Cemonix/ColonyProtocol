@@ -70,6 +70,10 @@ pub struct Planet {
     production_rate: Resources,
     pub available_resources: Resources,
     pub storage_capacity: Resources,
+    /// Current shield HP from defense_shield structure
+    shield_hp: u32,
+    /// Turns since last attack (shield regenerates when this reaches the configured threshold)
+    shield_regen_timer: u32,
 }
 
 impl Planet {
@@ -84,7 +88,9 @@ impl Planet {
             structures: HashMap::new(), // No structure is build on created planet
             production_rate: Resources::default(),
             available_resources: Resources::default(),
-            storage_capacity: Resources::default()
+            storage_capacity: Resources::default(),
+            shield_hp: 0,
+            shield_regen_timer: 0,
         }
     }
 
@@ -102,6 +108,60 @@ impl Planet {
 
     pub fn add_connection(&mut self, connection: Connection) {
         self.connections.push(connection);
+    }
+
+    /// Returns the level of a structure on this planet, or 0 if not built.
+    pub fn get_structure_level(&self, structure_id: &StructureId) -> u16 {
+        self.structures
+            .get(structure_id)
+            .map(|s| s.level)
+            .unwrap_or(0)
+    }
+
+    /// Returns a reference to all structures on this planet.
+    pub fn get_structures(&self) -> &HashMap<StructureId, Structure> {
+        &self.structures
+    }
+
+    pub fn get_shield_hp(&self) -> u32 {
+        self.shield_hp
+    }
+
+    /// Returns max shield HP based on defense_shield structure level.
+    /// Returns 0 if no defense shield is built.
+    pub fn get_max_shield_hp(&self) -> u32 {
+        self.structures
+            .get("defense_shield")
+            .map(|shield| shield.hitpoints)
+            .unwrap_or(0)
+    }
+
+    /// Applies damage to the shield and resets the regeneration timer.
+    /// Returns the amount of damage that passed through (overflow damage).
+    pub fn take_shield_damage(&mut self, damage: u32) -> u32 {
+        self.shield_regen_timer = 0;
+
+        if damage >= self.shield_hp {
+            let overflow = damage - self.shield_hp;
+            self.shield_hp = 0;
+            overflow
+        } else {
+            self.shield_hp -= damage;
+            0
+        }
+    }
+
+    /// Restores shield to maximum HP.
+    fn regenerate_shield(&mut self) {
+        self.shield_hp = self.get_max_shield_hp();
+    }
+
+    /// Returns the number of turns required for shield regeneration.
+    /// Returns None if no defense shield is built.
+    fn get_shield_regen_turns(&self) -> Option<u32> {
+        self.structures
+            .get("defense_shield")
+            .and_then(|shield| shield.get_shield_regen_turns())
     }
 
     /// Validates that a structure can be built and returns the cost/time info.
@@ -160,8 +220,8 @@ impl Planet {
                 structure: structure_id.clone()
             })?;
 
-        // Create new structure instance
-        let structure = Structure::new(structure_definition);
+        // Create operational structure at level 1
+        let structure = Structure::new_at_level(structure_definition, 1)?;
 
         // Insert structure into planet's structures
         self.structures.insert(structure_id, structure);
@@ -274,6 +334,23 @@ impl Planet {
             // Process structure turn
             structure.process_turn();
         }
+
+        // Shield logic: initialize when defense_shield becomes operational, or regenerate
+        if let Some(regen_turns) = self.get_shield_regen_turns() {
+            let max_shield = self.get_max_shield_hp();
+
+            // Initialize shield if it's 0 but we have a defense_shield (just built)
+            if self.shield_hp == 0 && max_shield > 0 {
+                self.shield_hp = max_shield;
+            } else if self.shield_hp < max_shield {
+                // Regeneration logic
+                self.shield_regen_timer += 1;
+                if self.shield_regen_timer >= regen_turns {
+                    self.regenerate_shield();
+                    self.shield_regen_timer = 0;
+                }
+            }
+        }
     }
 
     /// Colonizes the planet by building a planetary capital and filling resources.
@@ -287,15 +364,35 @@ impl Planet {
 
         let capital = Structure::new_at_level(capital_definition, 1)?;
 
-        // Set storage capacity from the capital
-        self.storage_capacity = capital.storage.clone();
+        // Add the capital structure
+        self.structures.insert(capital_id, capital);
+
+        // Recalculate totals from structures
+        self.recalculate_from_structures();
 
         // Fill resources to capacity
         self.available_resources = self.storage_capacity.clone();
 
-        // Add the capital structure
-        self.structures.insert(capital_id, capital);
-
         Ok(())
+    }
+
+    /// Recalculates production_rate and storage_capacity by summing all operational structures.
+    pub fn recalculate_from_structures(&mut self) {
+        self.production_rate = Resources::default();
+        self.storage_capacity = Resources::default();
+
+        for structure in self.structures.values() {
+            // Only count operational structures
+            if let StructureState::Operational = structure.state {
+                self.production_rate += &structure.production;
+                self.storage_capacity += &structure.storage;
+            }
+        }
+    }
+
+    /// Produces resources based on production_rate, capped at storage_capacity.
+    pub fn produce_resources(&mut self) {
+        self.available_resources += &self.production_rate;
+        self.available_resources = self.available_resources.capped_at(&self.storage_capacity);
     }
 }
