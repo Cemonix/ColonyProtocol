@@ -196,6 +196,48 @@ impl Game {
                     build_info.cost, build_info.turns
                 );
             },
+            CommandEffect::UpgradeStructure { planet_id, structure_id } => {
+                // Get current player
+                let current_player_id = self.game_state.current_player().clone();
+
+                // Check if player already has a pending action on this planet
+                let player = self.game_state.players.get(&current_player_id)
+                    .expect("Current player must exist in game state");
+                if player.has_pending_action_on_planet(&planet_id) {
+                    return Err(String::from("Planet already has a pending action"))
+                }
+
+                // Validate and get upgrade info
+                let planet = self.game_state.map.planets.get(&planet_id)
+                    .expect("Planet must exist (validated by command)");
+                let upgrade_info = planet.validate_upgrade_structure(
+                    &structure_id, &self.game_state.structure_config
+                ).map_err(|e| e.to_string())?;
+
+                // Deduct resources from planet
+                let planet = self.game_state.map.planets.get_mut(&planet_id)
+                    .expect("Planet must exist (validated by command)");
+                planet.available_resources -= &upgrade_info.cost;
+
+                // Create pending action
+                use crate::pending_action::{PendingAction, ActionType};
+                let pending_action = PendingAction::new(
+                    ActionType::UpgradeStructure(structure_id),
+                    planet_id,
+                    upgrade_info.turns,
+                    upgrade_info.cost.clone(),
+                );
+
+                // Add to player's pending actions
+                let player = self.game_state.players.get_mut(&current_player_id)
+                    .expect("Current player must exist in game state");
+                player.pending_actions.push(pending_action);
+
+                println!(
+                    "Upgrade queued. Resources spent: {}. Turns to complete: {}",
+                    upgrade_info.cost, upgrade_info.turns
+                );
+            },
             CommandEffect::BuildShip { planet_id, ship_id } => {
                 let current_player_id = self.game_state.current_player().clone();
 

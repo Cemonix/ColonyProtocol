@@ -130,8 +130,38 @@ fn format_planet_detail(planet_id: &str, game_state: &GameState) -> Result<Strin
         }
     }
 
-    // Pending action (if owned by current player)
+    // Available structures (if owned by current player)
     let current_player_id = game_state.current_player();
+    if planet.get_owner().as_ref() == Some(current_player_id) {
+        let buildable = planet.get_buildable_structures(&game_state.structure_config);
+
+        if !buildable.can_build_now.is_empty() || !buildable.locked.is_empty() {
+            msg.push_str("\nAVAILABLE STRUCTURES\n");
+
+            // Show structures that can be built now
+            if !buildable.can_build_now.is_empty() {
+                msg.push_str("  Can Build Now:\n");
+                for structure_info in buildable.can_build_now {
+                    let affordability = if structure_info.can_afford {
+                        format!("Cost: {}", structure_info.cost)
+                    } else {
+                        format!("Cost: {} (insufficient resources)", structure_info.cost)
+                    };
+                    msg.push_str(&format!("    {} - {}\n", structure_info.name, affordability));
+                }
+            }
+
+            // Show locked structures
+            if !buildable.locked.is_empty() {
+                msg.push_str("  Locked:\n");
+                for (_, name, reason) in buildable.locked {
+                    msg.push_str(&format!("    {} - {}\n", name, reason));
+                }
+            }
+        }
+    }
+
+    // Pending action (if owned by current player)
     if planet.get_owner().as_ref() == Some(current_player_id) {
         if let Some(player) = game_state.players.get(current_player_id) {
             if let Some(action) = player.pending_actions.iter().find(|a| &a.planet_id == planet_id) {

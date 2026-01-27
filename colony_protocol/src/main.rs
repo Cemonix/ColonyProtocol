@@ -39,5 +39,5 @@ fn main() {
             std::process::exit(1);
         }
     };
-    game.run();
+    game.run().unwrap();
 }

@@ -4,6 +4,7 @@ use crate::commands::build_ship::BuildShipArgs;
 use crate::commands::cancel::CancelArgs;
 use crate::commands::fleet::FleetArgs;
 use crate::commands::status::StatusArgs;
+use crate::commands::upgrade::UpgradeArgs;
 
 pub trait Parseable {
     fn parse(args: Vec<&str>) -> Result<Self, CommandError> where Self: Sized;
@@ -22,6 +23,7 @@ pub fn parse(input: &str) -> Result<Command, CommandError> {
     match command_name {
         "build" => Ok(Command::Build(BuildArgs::parse(command_args)?)),
         "build_ship" => Ok(Command::BuildShip(BuildShipArgs::parse(command_args)?)),
+        "upgrade" => Ok(Command::Upgrade(UpgradeArgs::parse(command_args)?)),
         "cancel" => Ok(Command::Cancel(CancelArgs::parse(command_args)?)),
         "status" => Ok(Command::Status(StatusArgs::parse(command_args)?)),
         "map" => Ok(Command::Map),
