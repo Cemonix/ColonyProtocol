@@ -96,6 +96,11 @@ impl StructureConfig {
         self.structures.get(id).cloned()
     }
 
+    /// Returns an iterator over all structure definitions.
+    pub fn iter(&self) -> impl Iterator<Item = (&StructureId, &Arc<StructureDefinition>)> {
+        self.structures.iter()
+    }
+
     fn validate_arrays(definition: &StructureDefinition) -> Result<(), StructureConfigError> {
         let max_level = definition.max_level as usize;
 
