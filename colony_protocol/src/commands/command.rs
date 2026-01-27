@@ -8,6 +8,7 @@ use crate::commands::help;
 use crate::commands::map;
 use crate::commands::ships;
 use crate::commands::status::{self, StatusArgs};
+use crate::commands::upgrade::{self, UpgradeArgs};
 use crate::configs::ship_config::ShipId;
 use crate::game_state::GameState;
 use crate::planet::PlanetId;
@@ -67,6 +68,7 @@ pub enum CommandError {
 pub enum Command {
     Build(BuildArgs),
     BuildShip(BuildShipArgs),
+    Upgrade(UpgradeArgs),
     Cancel(CancelArgs),
     Status(StatusArgs),
     Map,
@@ -82,6 +84,7 @@ impl Command {
         match self {
             Command::Build(args) => build::execute(args, game_state),
             Command::BuildShip(args) => build_ship::execute(args, game_state),
+            Command::Upgrade(args) => upgrade::execute(args, game_state),
             Command::Cancel(args) => cancel::execute(args, game_state),
             Command::Status(args) => status::execute(args, game_state),
             Command::Map => map::execute(game_state),
@@ -97,6 +100,7 @@ impl Command {
 pub enum CommandEffect {
     None { message: String },
     BuildStructure { planet_id: PlanetId, structure_id: StructureId },
+    UpgradeStructure { planet_id: PlanetId, structure_id: StructureId },
     BuildShip { planet_id: PlanetId, ship_id: ShipId },
     CancelAction { planet_id: PlanetId },
     CreateFleet { name: String, ship_ids: Vec<ShipInstanceId>, location: PlanetId },
