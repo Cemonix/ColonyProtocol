@@ -9,9 +9,22 @@ use crate::structure::{ StructureId, Structure, StructureState, StructureError }
 
 pub type PlanetId = String;
 
+#[derive(Debug)]
 pub struct BuildInfo {
     pub cost: Resources,
     pub turns: u32,
+}
+
+pub struct BuildableStructureInfo {
+    pub id: StructureId,
+    pub name: String,
+    pub cost: Resources,
+    pub can_afford: bool,
+}
+
+pub struct BuildableStructures {
+    pub can_build_now: Vec<BuildableStructureInfo>,
+    pub locked: Vec<(StructureId, String, String)>, // (id, name, reason)
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +68,14 @@ pub enum PlanetError {
     #[error("Structure definition '{structure}' not found in configuration")]
     StructureDefinitionNotFound {
         structure: StructureId
+    },
+
+    #[error("Prerequisites not met for {structure}: requires {prerequisite} at level {required_level} (current: {current_level})")]
+    PrerequisitesNotMet {
+        structure: StructureId,
+        prerequisite: StructureId,
+        required_level: u32,
+        current_level: u16,
     },
 
     #[error(transparent)]
@@ -164,6 +185,101 @@ impl Planet {
             .and_then(|shield| shield.get_shield_regen_turns())
     }
 
+    /// Returns information about which structures can be built on this planet.
+    /// Structures are categorized as either buildable now or locked (prerequisites not met).
+    pub fn get_buildable_structures(&self, structure_config: &StructureConfig) -> BuildableStructures {
+        let mut can_build_now = Vec::new();
+        let mut locked = Vec::new();
+
+        // Iterate over all structure definitions
+        for (structure_id, structure_def) in structure_config.iter() {
+            // Skip structures already built
+            if self.structures.contains_key(structure_id) {
+                continue;
+            }
+
+            // Check prerequisites
+            match self.check_prerequisites(structure_id, 1, structure_config) {
+                Ok(()) => {
+                    // Prerequisites met, get cost info
+                    let build_cost = structure_def.costs.get(0)
+                        .cloned()
+                        .unwrap_or_default();
+
+                    let can_afford = self.available_resources.has_enough(&build_cost);
+
+                    can_build_now.push(BuildableStructureInfo {
+                        id: structure_id.clone(),
+                        name: structure_def.name.clone(),
+                        cost: build_cost,
+                        can_afford,
+                    });
+                }
+                Err(PlanetError::PrerequisitesNotMet { prerequisite, required_level, current_level, .. }) => {
+                    // Get prerequisite name for better display
+                    let prereq_name = structure_config.get(&prerequisite)
+                        .map(|def| def.name.clone())
+                        .unwrap_or(prerequisite.clone());
+
+                    let reason = format!("Requires {} Lv{} (current: Lv{})",
+                        prereq_name, required_level, current_level);
+
+                    locked.push((
+                        structure_id.clone(),
+                        structure_def.name.clone(),
+                        reason
+                    ));
+                }
+                _ => {
+                    // Other errors, skip
+                }
+            }
+        }
+
+        BuildableStructures {
+            can_build_now,
+            locked,
+        }
+    }
+
+    /// Checks if prerequisites are met for building or upgrading a structure to a specific level.
+    /// target_level is the level we want to reach (1 for new build, >1 for upgrade).
+    fn check_prerequisites(
+        &self,
+        structure_id: &StructureId,
+        target_level: u16,
+        structure_config: &StructureConfig
+    ) -> Result<(), PlanetError> {
+        // Get structure definition
+        let structure_def = structure_config.get(structure_id)
+            .ok_or(PlanetError::StructureDefinitionNotFound {
+                structure: structure_id.clone()
+            })?;
+
+        // Check each prerequisite
+        for prereq in &structure_def.prerequisites {
+            // target_level is 1-indexed, but required_levels array is 0-indexed
+            let level_idx = (target_level - 1) as usize;
+
+            // Get the required level for this target level
+            // If required_levels doesn't specify a requirement for this level, skip it
+            if let Some(&required_level) = prereq.required_levels.get(level_idx) {
+                let current_level = self.get_structure_level(&prereq.structure_id);
+
+                if (current_level as u32) < required_level {
+                    return Err(PlanetError::PrerequisitesNotMet {
+                        structure: structure_id.clone(),
+                        prerequisite: prereq.structure_id.clone(),
+                        required_level,
+                        current_level,
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Validates that a structure can be built and returns the cost/time info.
     /// Does NOT deduct resources or add the structure - use complete_build_structure for that.
     pub fn validate_build_structure(
@@ -178,6 +294,9 @@ impl Planet {
                 planet: self.id.clone()
             });
         }
+
+        // Check prerequisites for level 1 (building new structure)
+        self.check_prerequisites(structure_id, 1, structure_config)?;
 
         // Get structure definition from config
         let structure_definition = structure_config.get(structure_id)
@@ -233,7 +352,8 @@ impl Planet {
     /// Does NOT deduct resources or upgrade the structure - use complete_upgrade_structure for that.
     pub fn validate_upgrade_structure(
         &self,
-        structure_id: &StructureId
+        structure_id: &StructureId,
+        structure_config: &StructureConfig
     ) -> Result<BuildInfo, PlanetError> {
         // Get reference to the structure, return error if not found
         let structure = self.structures.get(structure_id)
@@ -257,6 +377,10 @@ impl Planet {
                 planet: self.id.clone()
             });
         }
+
+        // Check prerequisites for next level
+        let next_level = structure.level + 1;
+        self.check_prerequisites(structure_id, next_level, structure_config)?;
 
         // Calculate upgrade cost
         let cost_to_upgrade = structure.cost_to_upgrade()?.clone();
@@ -394,5 +518,264 @@ impl Planet {
     pub fn produce_resources(&mut self) {
         self.available_resources += &self.production_rate;
         self.available_resources = self.available_resources.capped_at(&self.storage_capacity);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::configs::structure_config::StructureConfig;
+
+    fn create_test_structure_config() -> StructureConfig {
+        let json = r#"[
+            {
+                "id": "planetary_capital",
+                "name": "Planetary Capital",
+                "description": "Base structure",
+                "max_level": 3,
+                "costs": [
+                    {"minerals": 100, "gas": 0, "energy": 0},
+                    {"minerals": 200, "gas": 0, "energy": 0},
+                    {"minerals": 300, "gas": 0, "energy": 0}
+                ],
+                "upgrade_time": [2, 3, 4],
+                "energy_consumption": [0, 0, 0],
+                "hitpoints": [1000, 1500, 2000],
+                "production": [
+                    {"minerals": 10, "gas": 5, "energy": 10},
+                    {"minerals": 15, "gas": 8, "energy": 15},
+                    {"minerals": 20, "gas": 10, "energy": 20}
+                ],
+                "storage_capacity": [
+                    {"minerals": 500, "gas": 250, "energy": 100},
+                    {"minerals": 750, "gas": 375, "energy": 150},
+                    {"minerals": 1000, "gas": 500, "energy": 200}
+                ],
+                "prerequisites": []
+            },
+            {
+                "id": "storage_complex",
+                "name": "Storage Complex",
+                "description": "Requires capital",
+                "max_level": 3,
+                "costs": [
+                    {"minerals": 200, "gas": 0, "energy": 0},
+                    {"minerals": 400, "gas": 0, "energy": 0},
+                    {"minerals": 800, "gas": 0, "energy": 0}
+                ],
+                "upgrade_time": [2, 3, 4],
+                "energy_consumption": [5, 8, 12],
+                "hitpoints": [600, 900, 1200],
+                "production": [
+                    {"minerals": 0, "gas": 0, "energy": 0},
+                    {"minerals": 0, "gas": 0, "energy": 0},
+                    {"minerals": 0, "gas": 0, "energy": 0}
+                ],
+                "storage_capacity": [
+                    {"minerals": 1000, "gas": 500, "energy": 0},
+                    {"minerals": 2000, "gas": 1000, "energy": 0},
+                    {"minerals": 4000, "gas": 2000, "energy": 0}
+                ],
+                "prerequisites": [
+                    {
+                        "structure_id": "planetary_capital",
+                        "required_levels": [2, 2, 3]
+                    }
+                ]
+            },
+            {
+                "id": "mining_complex",
+                "name": "Mining Complex",
+                "description": "Requires storage",
+                "max_level": 2,
+                "costs": [
+                    {"minerals": 250, "gas": 0, "energy": 0},
+                    {"minerals": 500, "gas": 0, "energy": 0}
+                ],
+                "upgrade_time": [2, 3],
+                "energy_consumption": [10, 15],
+                "hitpoints": [700, 1050],
+                "production": [
+                    {"minerals": 40, "gas": 0, "energy": 0},
+                    {"minerals": 70, "gas": 0, "energy": 0}
+                ],
+                "storage_capacity": [
+                    {"minerals": 0, "gas": 0, "energy": 0},
+                    {"minerals": 0, "gas": 0, "energy": 0}
+                ],
+                "prerequisites": [
+                    {
+                        "structure_id": "storage_complex",
+                        "required_levels": [1, 2]
+                    }
+                ]
+            }
+        ]"#;
+
+        StructureConfig::load_from_string(json).expect("Valid test config")
+    }
+
+    #[test]
+    fn test_build_structure_without_prerequisites() {
+        let config = create_test_structure_config();
+        let mut planet = Planet::new(
+            "p1".to_string(),
+            "Test Planet".to_string(),
+            Some("player1".to_string()),
+            vec![]
+        );
+
+        // Give planet resources
+        planet.available_resources = Resources {
+            minerals: 1000,
+            gas: 1000,
+            energy: 1000,
+        };
+
+        // Should be able to build planetary_capital (no prerequisites)
+        let result = planet.validate_build_structure(&"planetary_capital".to_string(), &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_structure_prerequisites_not_met() {
+        let config = create_test_structure_config();
+        let mut planet = Planet::new(
+            "p1".to_string(),
+            "Test Planet".to_string(),
+            Some("player1".to_string()),
+            vec![]
+        );
+
+        // Give planet resources
+        planet.available_resources = Resources {
+            minerals: 1000,
+            gas: 1000,
+            energy: 1000,
+        };
+
+        // Try to build storage_complex without capital at level 2
+        let result = planet.validate_build_structure(&"storage_complex".to_string(), &config);
+        assert!(result.is_err());
+
+        match result {
+            Err(PlanetError::PrerequisitesNotMet { structure, prerequisite, required_level, current_level }) => {
+                assert_eq!(structure, "storage_complex");
+                assert_eq!(prerequisite, "planetary_capital");
+                assert_eq!(required_level, 2);
+                assert_eq!(current_level, 0);
+            }
+            _ => panic!("Expected PrerequisitesNotMet error")
+        }
+    }
+
+    #[test]
+    fn test_build_structure_prerequisites_met() {
+        let config = create_test_structure_config();
+        let mut planet = Planet::new(
+            "p1".to_string(),
+            "Test Planet".to_string(),
+            Some("player1".to_string()),
+            vec![]
+        );
+
+        // Give planet resources
+        planet.available_resources = Resources {
+            minerals: 10000,
+            gas: 10000,
+            energy: 10000,
+        };
+
+        // Build and add capital at level 2
+        let capital_def = config.get(&"planetary_capital".to_string()).unwrap();
+        let capital = Structure::new_at_level(capital_def, 2).unwrap();
+        planet.structures.insert("planetary_capital".to_string(), capital);
+
+        // Now should be able to build storage_complex
+        let result = planet.validate_build_structure(&"storage_complex".to_string(), &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_structure_chained_prerequisites() {
+        let config = create_test_structure_config();
+        let mut planet = Planet::new(
+            "p1".to_string(),
+            "Test Planet".to_string(),
+            Some("player1".to_string()),
+            vec![]
+        );
+
+        // Give planet resources
+        planet.available_resources = Resources {
+            minerals: 10000,
+            gas: 10000,
+            energy: 10000,
+        };
+
+        // Try to build mining_complex without storage_complex
+        let result = planet.validate_build_structure(&"mining_complex".to_string(), &config);
+        assert!(result.is_err());
+
+        // Add storage_complex at level 1
+        let storage_def = config.get(&"storage_complex".to_string()).unwrap();
+        let storage = Structure::new_at_level(storage_def, 1).unwrap();
+        planet.structures.insert("storage_complex".to_string(), storage);
+
+        // But also need capital at level 2 for storage_complex
+        let capital_def = config.get(&"planetary_capital".to_string()).unwrap();
+        let capital = Structure::new_at_level(capital_def, 2).unwrap();
+        planet.structures.insert("planetary_capital".to_string(), capital);
+
+        // Now should be able to build mining_complex
+        let result = planet.validate_build_structure(&"mining_complex".to_string(), &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_upgrade_structure_prerequisites_not_met() {
+        let config = create_test_structure_config();
+        let mut planet = Planet::new(
+            "p1".to_string(),
+            "Test Planet".to_string(),
+            Some("player1".to_string()),
+            vec![]
+        );
+
+        // Give planet resources
+        planet.available_resources = Resources {
+            minerals: 10000,
+            gas: 10000,
+            energy: 10000,
+        };
+
+        // Add capital at level 2 and storage_complex at level 1
+        let capital_def = config.get(&"planetary_capital".to_string()).unwrap();
+        let capital = Structure::new_at_level(capital_def, 2).unwrap();
+        planet.structures.insert("planetary_capital".to_string(), capital);
+
+        let storage_def = config.get(&"storage_complex".to_string()).unwrap();
+        let storage = Structure::new_at_level(storage_def, 1).unwrap();
+        planet.structures.insert("storage_complex".to_string(), storage);
+
+        // Try to upgrade storage to level 2 (requires capital at level 2, which we have)
+        let result = planet.validate_upgrade_structure(&"storage_complex".to_string(), &config);
+        assert!(result.is_ok());
+
+        // Try to upgrade storage to level 3 would require capital at level 3
+        // (simulated by checking what happens when we set storage to level 2 first)
+        planet.structures.get_mut("storage_complex").unwrap().level = 2;
+        let result = planet.validate_upgrade_structure(&"storage_complex".to_string(), &config);
+        assert!(result.is_err());
+
+        match result {
+            Err(PlanetError::PrerequisitesNotMet { structure, prerequisite, required_level, current_level }) => {
+                assert_eq!(structure, "storage_complex");
+                assert_eq!(prerequisite, "planetary_capital");
+                assert_eq!(required_level, 3);
+                assert_eq!(current_level, 2);
+            }
+            _ => panic!("Expected PrerequisitesNotMet error, got {:?}", result)
+        }
     }
 }
