@@ -1,20 +1,5 @@
-mod resources;
-mod configs;
-mod structure;
-mod planet;
-mod planet_name_generator;
-mod player;
-mod pending_action;
-mod map;
-mod game_state;
-mod game_configuration;
-mod game;
-mod commands;
-mod utils;
-mod ship;
-mod fleet;
-
-use crate::{game::Game, game_configuration::GameConfiguration};
+use colony_core::game::{Game};
+use colony_core::game_configuration::{GameConfiguration};
 
 fn main() {
     #[cfg(debug_assertions)]
@@ -39,5 +24,12 @@ fn main() {
             std::process::exit(1);
         }
     };
-    game.run().unwrap();
+    match game.run() {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!("CRITICAL ERROR: {}", error);
+            eprintln!("Connection terminated. Please restart the protocol.");
+            return;
+        }
+    }
 }
